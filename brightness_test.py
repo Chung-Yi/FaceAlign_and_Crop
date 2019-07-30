@@ -2,6 +2,7 @@ import cv2
 import os
 import face_recognition as fr
 from utils import *
+from PIL import Image
 from keras.models import load_model
 
 INPUT_SIZE = 200
@@ -51,7 +52,7 @@ def crop_left_face(face_image, points):
 
 def crop_right_face(face_image, points):
     points = np.concatenate(
-        (points[8:17], points[71:75], points[78:80], points[27:31]), axis=0)
+        (points[8:17], points[71:75], points[78:81], points[27:31]), axis=0)
 
     points_int = np.array([[int(p[0]), int(p[1])] for p in points])
     remapped_shape = np.zeros_like(points)
@@ -153,14 +154,58 @@ def process_image(image):
             right_face = cv2.cvtColor(right_landmark_face, cv2.COLOR_RGB2BGR)
 
             cv2.imshow('img', face)
+            cv2.waitKey(0)
             cv2.imshow('left_face', left_face)
+            cv2.waitKey(0)
             cv2.imshow('right_face', right_face)
             cv2.waitKey(0)
 
+            return left_landmark_face, right_landmark_face
+
+
+def get_pixels(image):
+    height = image.shape[0]
+    width = image.shape[1]
+    for i in range(0, width):
+        for j in range(0, height):
+            pixel = image[j][i]
+            if np.any(pixel != [0, 0, 0]):
+                yield pixel
+
+
+def get_brightness(image):
+    total_pixels = 0
+    total_brightness = 0
+    for pixel in get_pixels(image):
+        brightness = cal_brightness(pixel)
+        total_brightness += brightness
+        total_pixels += 1
+
+        if total_pixels > 0:
+            average_brightness = total_brightness / total_pixels
+            return round(average_brightness, 3)
+        else:
+            return 0
+
+
+def cal_brightness(pixel):
+    red, green, blue = pixel
+    redness = red * 0.2126
+    greenness = green * 0.7152
+    blueness = blue * 0.0722
+
+    brightness = redness + greenness + blueness
+
+    return brightness
+
 
 def main():
-    image = 'DSC_1990.JPG'
-    process_image(image)
+    image = 'DSC_2042.JPG'
+    left_face, right_face = process_image(image)
+    brightness = get_brightness(left_face)
+    print(brightness)
+    brightness = get_brightness(right_face)
+    print(brightness)
 
 
 if __name__ == '__main__':
