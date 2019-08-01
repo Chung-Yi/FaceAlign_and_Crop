@@ -1,9 +1,12 @@
 import cv2
 import os
+import glob
+import collections
 import face_recognition as fr
 from utils import *
 from PIL import Image
 from keras.models import load_model
+from save_csv import write_to_csv
 
 INPUT_SIZE = 200
 path = os.path.abspath(os.path.dirname(__file__))
@@ -12,21 +15,6 @@ landmark_model = load_model(model_name)
 
 
 def face_remap_points(shape):
-    # remapped_image = shape.copy()
-    # remapped_image[17] = shape[78]
-    # remapped_image[18] = shape[74]
-    # remapped_image[19] = shape[79]
-    # remapped_image[20] = shape[73]
-    # remapped_image[21] = shape[72]
-    # remapped_image[22] = shape[80]
-    # remapped_image[23] = shape[71]
-    # remapped_image[24] = shape[70]
-    # remapped_image[25] = shape[69]
-    # remapped_image[26] = shape[68]
-    # remapped_image[27] = shape[76]
-    # remapped_image[28] = shape[75]
-    # remapped_image[29] = shape[77]
-    # remapped_image[30] = shape[0]
 
     remapped_image = cv2.convexHull(shape)
 
@@ -44,7 +32,7 @@ def crop_left_face(face_image, points):
 
     remapped_shape = face_remap_points(points_int)
 
-    cv2.fillConvexPoly(feature_mask, remapped_shape[0:20], 1)
+    cv2.fillConvexPoly(feature_mask, remapped_shape[:], 1)
     feature_mask = feature_mask.astype(np.bool)
     landmark_face[feature_mask] = face_image[feature_mask]
     return landmark_face
@@ -61,7 +49,7 @@ def crop_right_face(face_image, points):
 
     remapped_shape = face_remap_points(points_int)
 
-    cv2.fillConvexPoly(feature_mask, remapped_shape[0:20], 1)
+    cv2.fillConvexPoly(feature_mask, remapped_shape[:], 1)
     feature_mask = feature_mask.astype(np.bool)
     landmark_face[feature_mask] = face_image[feature_mask]
     return landmark_face
@@ -76,7 +64,7 @@ def crop_landmark(face_image, points):
 
     remapped_shape = face_remap_points(points_int)
 
-    cv2.fillConvexPoly(feature_mask, remapped_shape[0:22], 1)
+    cv2.fillConvexPoly(feature_mask, remapped_shape[:], 1)
     feature_mask = feature_mask.astype(np.bool)
     landmark_face[feature_mask] = face_image[feature_mask]
     return landmark_face
@@ -112,13 +100,8 @@ def align(image, points, locs):
 
 def process_image(image):
 
-    # folder_name = image.split('/')[-2]
-    # image_name = image.split('/')[-1]
-
-    # if (os.path.isdir(os.path.join(output_path, folder_name))) == False:
-    #     os.mkdir(os.path.join(output_path, folder_name))
-
     face_image = cv2.imread(image)
+
     face_image_rgb = cv2.cvtColor(face_image, cv2.COLOR_BGR2RGB)
 
     locs = []
@@ -126,6 +109,7 @@ def process_image(image):
     locs = get_max_locations(locations)
 
     if locs is not None:
+
         face_img, delta_locs = cut_face(face_image_rgb, locs)
 
         if face_img.size != 0:
@@ -153,30 +137,51 @@ def process_image(image):
             left_face = cv2.cvtColor(left_landmark_face, cv2.COLOR_RGB2BGR)
             right_face = cv2.cvtColor(right_landmark_face, cv2.COLOR_RGB2BGR)
 
-            cv2.imshow('img', face)
-            cv2.waitKey(0)
-            cv2.imshow('left_face', left_face)
-            cv2.waitKey(0)
-            cv2.imshow('right_face', right_face)
-            cv2.waitKey(0)
+            # cv2.imshow('img', face)
+            # cv2.waitKey(0)
+            # cv2.imshow('left_face', left_face)
+            # cv2.waitKey(0)
+            # cv2.imshow('right_face', right_face)
+            # cv2.waitKey(0)
 
-            return left_landmark_face, right_landmark_face
+            return left_landmark_face, right_landmark_face, face
+
+    else:
+
+        return None, None, None
 
 
 def get_pixels(image):
     height = image.shape[0]
     width = image.shape[1]
-    for i in range(0, width):
-        for j in range(0, height):
-            pixel = image[j][i]
+    for r in range(0, height):
+        for c in range(0, width):
+            pixel = image[r][c]
             if np.any(pixel != [0, 0, 0]):
                 yield pixel
+
+
+def get_image_brightness(image):
+    height = image.shape[0]
+    width = image.shape[1]
+    for r in range(0, height):
+        for c in range(0, width):
+            pixel = image[r][c]
+            if np.any(pixel != [0, 0, 0]):
+                print(pixel)
+                red, green, blue = pixel
+                redness = red * 0.2126
+                greenness = green * 0.7152
+                blueness = blue * 0.0722
+                brightness = redness + greenness + blueness
+    return brightness
 
 
 def get_brightness(image):
     total_pixels = 0
     total_brightness = 0
     for pixel in get_pixels(image):
+
         brightness = cal_brightness(pixel)
         total_brightness += brightness
         total_pixels += 1
@@ -200,12 +205,32 @@ def cal_brightness(pixel):
 
 
 def main():
-    image = 'DSC_2042.JPG'
-    left_face, right_face = process_image(image)
-    brightness = get_brightness(left_face)
-    print(brightness)
-    brightness = get_brightness(right_face)
-    print(brightness)
+    image_path = 'images/**/*.jpg'
+    img_info = []
+
+    for i, image in enumerate(glob.glob(image_path)):
+
+        name = image.split('/')[-1]
+        anno = image.split('/')[-2]
+
+        left_face, right_face, face = process_image(image)
+
+        if (left_face is None) and (right_face is None):
+            continue
+        # l_brightness = get_brightness(left_face)
+        # r_brightness = get_brightness(right_face)
+
+        l_brightness = get_image_brightness(left_face)
+        r_brightness = get_image_brightness(right_face)
+
+        img_info.append([name, l_brightness, r_brightness, anno])
+        cv2.imwrite('crop_face/' + name, face)
+
+    print("Start writing in csv file ------------------")
+
+    write_to_csv(img_info)
+
+    print('Done')
 
 
 if __name__ == '__main__':
