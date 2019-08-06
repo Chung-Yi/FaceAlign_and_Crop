@@ -164,16 +164,26 @@ def get_pixels(image):
 def get_image_brightness(image):
     height = image.shape[0]
     width = image.shape[1]
+    total_brightness = 0
+    total_pixels = 0
     for r in range(0, height):
         for c in range(0, width):
             pixel = image[r][c]
             if np.any(pixel != [0, 0, 0]):
-                print(pixel)
                 red, green, blue = pixel
                 redness = red * 0.2126
                 greenness = green * 0.7152
                 blueness = blue * 0.0722
                 brightness = redness + greenness + blueness
+                total_brightness += brightness
+                total_pixels += 1
+
+    if total_pixels > 0:
+        average_brightness = total_brightness / total_pixels
+        return round(average_brightness, 3)
+    else:
+        return 0
+
     return brightness
 
 
@@ -186,11 +196,11 @@ def get_brightness(image):
         total_brightness += brightness
         total_pixels += 1
 
-        if total_pixels > 0:
-            average_brightness = total_brightness / total_pixels
-            return round(average_brightness, 3)
-        else:
-            return 0
+    if total_pixels > 0:
+        average_brightness = total_brightness / total_pixels
+        return round(average_brightness, 3)
+    else:
+        return 0
 
 
 def cal_brightness(pixel):
@@ -222,13 +232,32 @@ def main():
 
         l_brightness = get_image_brightness(left_face)
         r_brightness = get_image_brightness(right_face)
+        delta_brightness = abs(l_brightness - r_brightness)
+        average_brightness = (l_brightness + r_brightness) / 2
 
-        img_info.append([name, l_brightness, r_brightness, anno])
-        cv2.imwrite('crop_face/' + name, face)
+        img_info.append([
+            name, l_brightness, r_brightness, anno, delta_brightness,
+            average_brightness
+        ])
+        # cv2.imwrite('crop_face/' + name, face)
+
+        if min(l_brightness, r_brightness) < 80 and delta_brightness > 35 and (
+                l_brightness > r_brightness):
+            os.rename(image, os.path.join('images', 'right_dark', name))
+        elif min(l_brightness,
+                 r_brightness) < 80 and delta_brightness > 35 and (
+                     l_brightness < r_brightness):
+            os.rename(image, os.path.join('images', 'left_dark', name))
+        elif l_brightness > 100 and r_brightness > 100:
+            os.rename(image, os.path.join('images', 'light', name))
+        elif l_brightness < 100 and r_brightness < 100:
+            os.rename(image, os.path.join('images', 'dark', name))
+        else:
+            os.rename(image, os.path.join('images', 'none', name))
 
     print("Start writing in csv file ------------------")
 
-    write_to_csv(img_info)
+    # write_to_csv(img_info)
 
     print('Done')
 
