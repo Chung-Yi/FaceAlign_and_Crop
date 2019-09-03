@@ -184,7 +184,7 @@ def get_image_brightness(image):
     else:
         return 0
 
-    return brightness
+    
 
 
 def get_brightness(image):
@@ -241,17 +241,14 @@ def main():
         ])
         # cv2.imwrite('crop_face/' + name, face)
 
-        if min(l_brightness, r_brightness) < 80 and delta_brightness > 35 and (
-                l_brightness > r_brightness):
-            os.rename(image, os.path.join('images', 'right_dark', name))
-        elif min(l_brightness,
-                 r_brightness) < 80 and delta_brightness > 35 and (
-                     l_brightness < r_brightness):
-            os.rename(image, os.path.join('images', 'left_dark', name))
-        elif l_brightness > 100 and r_brightness > 100:
+        if l_brightness > 100 and r_brightness > 100:
             os.rename(image, os.path.join('images', 'light', name))
         elif l_brightness < 100 and r_brightness < 100:
             os.rename(image, os.path.join('images', 'dark', name))
+        elif l_brightness > r_brightness:
+            os.rename(image, os.path.join('images', 'right_dark', name))
+        elif l_brightness < r_brightness:
+            os.rename(image, os.path.join('images', 'left_dark', name))
         else:
             os.rename(image, os.path.join('images', 'none', name))
 
