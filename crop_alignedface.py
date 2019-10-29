@@ -10,6 +10,7 @@ from os import walk
 from keras.models import load_model
 from multiprocessing import Pool
 from argparse import ArgumentParser
+from utils import *
 
 path = os.path.abspath(os.path.dirname(__file__))
 model_name = os.path.join(path, 'models/cnn_0702.h5')
@@ -22,23 +23,14 @@ input_path = args.input_path
 output_path = args.output_path
 
 INPUT_SIZE = 200
+RESIZE = 224
+DELTA = 20
 types = ('*.jpg', '*.JPG')
 landmark_model = load_model(model_name)
 
 
 def handle_error(e):
     traceback.print_exception(type(e), e, e.__traceback__)
-
-
-def get_max_locations(locations, locs=None):
-    area1 = 0.0
-    for loc in locations:
-        start_x, start_y, end_x, end_y = loc[3], loc[0], loc[1], loc[2]
-        area2 = (end_x - start_x) * (end_y - start_y)
-        if area2 > area1:
-            area1 = area2
-            locs = start_x, start_y, end_x, end_y
-    return locs
 
 
 def process_image(image, output_path=output_path):
@@ -57,7 +49,7 @@ def process_image(image, output_path=output_path):
     locs = get_max_locations(locations)
 
     if locs is not None:
-        face_img, delta_locs = cut_face(face_image_rgb, locs)
+        face_img, delta_locs, _ = cut_face(face_image_rgb, locs)
 
         if face_img.size != 0:
             face_resized = cv2.resize(face_img, (INPUT_SIZE, INPUT_SIZE))
@@ -69,13 +61,30 @@ def process_image(image, output_path=output_path):
 
             points = np.reshape(points, (-1, 2))
 
+            new_face, new_delta_locs, new_loc = cut_face(
+                face_image_rgb, locs, delta=DELTA)
+
             points[:, 0] *= face_img.shape[1]
             points[:, 1] *= face_img.shape[0]
-            points[:, 0] += locs[0] - delta_locs[0]
-            points[:, 1] += locs[1] - delta_locs[1]
+
+            points[:, 0] += new_delta_locs[0] - delta_locs[0]
+            points[:, 1] += new_delta_locs[1] - delta_locs[1]
+
+            # points[:, 0] -= locs[0]
+            # points[:, 1] -= locs[1]
+
+            # points[:, 0] += delta_locs_2[0]
+            # points[:, 1] += delta_locs_2[1]
+            # points[:, 0] += locs[0] - delta_locs_1[0]
+            # points[:, 1] += locs[1] - delta_locs_1[1]
+
+            for point in points:
+                cv2.circle(new_face, (int(point[0]), int(point[1])), 1,
+                           (0, 255, 0), -1, cv2.LINE_AA)
+            cv2.imwrite('output/landmark.jpg', new_face)
 
             # get aligned face
-            faceAligned = align(face_image_rgb, points, locs)
+            faceAligned = align(new_face, points, new_loc)
 
             # get aligned face locations
             # locations = fr.face_locations(faceAligned)
@@ -85,8 +94,12 @@ def process_image(image, output_path=output_path):
             # print(faceAligned.shape)
             # print(locs)
             # if locs is not None:
-            face = cv2.cvtColor(faceAligned[locs[1]:locs[3], locs[0]:locs[2]],
-                                cv2.COLOR_RGB2BGR)
+
+            # face = cv2.cvtColor(
+            #     faceAligned[locs[1]:locs[3], locs[0]s:locs[2]], cv2.COLOR_RGB2BGR)
+            # face = cv2.cvtColor(
+            #     faceAligned[new_loc[1]:new_loc[3], new_loc[0]:new_loc[2]],
+            #     cv2.COLOR_RGB2BGR)
 
             # # get aligned face points
             # faceAligned_resized = cv2.resize(faceAligned,
@@ -114,24 +127,11 @@ def process_image(image, output_path=output_path):
             # face = crop_landmark_face(points, faceAligned)
             # face = face[min_y - 20:max_y + 20, min_x - 20:max_x + 20]
             # face = cv2.cvtColor(face, cv2.COLOR_RGB2BGR)
-            face = cv2.resize(face, (112, 112))
+
+            face = cv2.resize(faceAligned[:, :, ::-1], (RESIZE, RESIZE))
 
             cv2.imwrite(
                 os.path.join(output_path, folder_name, image_name), face)
-
-
-def draw_landmak_point(image, points):
-    for point in points:
-        cv2.circle(image, (int(point[0]), int(point[1])), 3, (0, 255, 0), -1,
-                   cv2.LINE_AA)
-
-
-def get_minimal_box(points):
-    min_x = int(min([point[0] for point in points]))
-    max_x = int(max([point[0] for point in points]))
-    min_y = int(min([point[1] for point in points]))
-    max_y = int(max([point[1] for point in points]))
-    return [min_x, min_y, max_x, max_y]
 
 
 def eyes_images(face, points):
@@ -195,64 +195,6 @@ def align(image, points, locs):
     return output
 
 
-def cut_face(face_image, locations):
-    face_imgs = []
-    delta_locs = []
-    width = face_image.shape[1]
-    height = face_image.shape[0]
-
-    start_x, start_y, end_x, end_y = locations
-    delta = 40
-
-    new_start_y = start_y - delta
-    new_end_y = end_y + delta
-    new_start_x = start_x - delta
-    new_end_x = end_x + delta
-
-    new_start_x, new_start_y, new_end_x, new_end_y = max(0, new_start_x), max(
-        0, new_start_y), min(width, new_end_x), min(height, new_end_y)
-
-    face_img = face_image[new_start_y:new_end_y, new_start_x:new_end_x, :]
-    delta_locs = (abs(new_start_x - start_x), abs(new_start_y - start_y))
-    return face_img, delta_locs
-
-
-def face_remap(shape):
-    remapped_image = shape.copy()
-    remapped_image[17] = shape[78]
-    remapped_image[18] = shape[74]
-    remapped_image[19] = shape[79]
-    remapped_image[20] = shape[73]
-    remapped_image[21] = shape[72]
-    remapped_image[22] = shape[80]
-    remapped_image[23] = shape[71]
-    remapped_image[24] = shape[70]
-    remapped_image[25] = shape[69]
-    remapped_image[26] = shape[68]
-    remapped_image[27] = shape[76]
-    remapped_image[28] = shape[75]
-    remapped_image[29] = shape[77]
-    remapped_image[30] = shape[0]
-
-    return remapped_image
-
-
-def crop_landmark_face(points, face_image):
-    #initialize mask array and draw mask image
-    points_int = np.array([[int(p[0]), int(p[1])] for p in points])
-    remapped_shape = np.zeros_like(points)
-    landmark_face = np.zeros_like(face_image)
-    feature_mask = np.zeros((face_image.shape[0], face_image.shape[1]))
-
-    remapped_shape = face_remap(points_int)
-    remapped_shape = cv2.convexHull(points_int)
-
-    cv2.fillConvexPoly(feature_mask, remapped_shape[0:31], 1)
-    feature_mask = feature_mask.astype(np.bool)
-    landmark_face[feature_mask] = face_image[feature_mask]
-    return landmark_face
-
-
 def main():
     folders = []
     images = []
@@ -264,7 +206,7 @@ def main():
             images.extend(glob.glob(input_path + '/**/' + files))
         else:
             images.extend(glob.glob(input_path + '/' + files))
-    batch = 1
+
     for i, image in enumerate(images):
         process_image(image)
         if (i + 1) % 100 == 0:

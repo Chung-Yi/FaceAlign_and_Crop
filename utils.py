@@ -63,14 +63,11 @@ def get_max_locations(locations, locs=None):
     return locs
 
 
-def cut_face(face_image, locations):
-    face_imgs = []
-    delta_locs = []
+def cut_face(face_image, locations, delta=40):
     width = face_image.shape[1]
     height = face_image.shape[0]
 
     start_x, start_y, end_x, end_y = locations
-    delta = 40
 
     new_start_y = start_y - delta
     new_end_y = end_y + delta
@@ -82,4 +79,5 @@ def cut_face(face_image, locations):
 
     face_img = face_image[new_start_y:new_end_y, new_start_x:new_end_x, :]
     delta_locs = (abs(new_start_x - start_x), abs(new_start_y - start_y))
-    return face_img, delta_locs
+    return face_img, delta_locs, (new_start_x, new_start_y, new_end_x,
+                                  new_end_y)
